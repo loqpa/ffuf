@@ -141,6 +141,7 @@ func (r *SimpleRunner) Prepare(input map[string][]byte, basereq *ffuf.Request) (
 
 	for keyword, inputitem := range input {
 		req.Method = strings.ReplaceAll(req.Method, keyword, string(inputitem))
+		req.SNI = strings.ReplaceAll(req.SNI, keyword, string(inputitem))
 		headers := make(map[string]string, len(req.Headers))
 		for h, v := range req.Headers {
 			var CanonicalHeader string = textproto.CanonicalMIMEHeaderKey(strings.ReplaceAll(h, keyword, string(inputitem)))
@@ -228,7 +229,28 @@ func (r *SimpleRunner) Execute(req *ffuf.Request) (resp ffuf.Response, err error
 		req.Raw = string(rawreq)
 	}
 
-	httpresp, err := r.client.Do(httpreq)
+	client := r.client
+	if req.SNI != r.config.SNI {
+		// A TLS connection carries one SNI value for its entire lifetime. Dynamic
+		// SNI fuzzing therefore cannot use the shared connection pool: changing
+		// only the HTTP Host header on a pooled connection would keep the SNI from
+		// the first request. Clone the transport so this request gets both its own
+		// TLS configuration and a fresh connection. The clone retains proxy,
+		// client-certificate and HTTP/2 settings from the configured transport.
+		baseTransport, ok := r.client.Transport.(*http.Transport)
+		if !ok {
+			return ffuf.Response{}, fmt.Errorf("dynamic SNI requires an HTTP transport")
+		}
+		transport := baseTransport.Clone()
+		transport.DisableKeepAlives = true
+		transport.TLSClientConfig = baseTransport.TLSClientConfig.Clone()
+		transport.TLSClientConfig.ServerName = req.SNI
+		requestClient := *r.client
+		requestClient.Transport = transport
+		client = &requestClient
+	}
+
+	httpresp, err := client.Do(httpreq)
 	if err != nil {
 		return ffuf.Response{}, err
 	}

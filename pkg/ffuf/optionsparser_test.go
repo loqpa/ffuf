@@ -1,9 +1,28 @@
 package ffuf
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
+
+func TestSNIIsAValidFuzzKeywordLocation(t *testing.T) {
+	options := NewConfigOptions()
+	options.HTTP.URL = "https://127.0.0.1/"
+	options.HTTP.SNI = "FUZZ.example.test"
+	options.Input.Wordlists = []string{"/tmp/words:FUZZ"}
+
+	conf, err := ConfigFromOptions(options, context.Background(), func() {})
+	if err != nil {
+		t.Fatalf("ConfigFromOptions: %v", err)
+	}
+	if len(conf.InputProviders) != 1 || conf.InputProviders[0].Keyword != "FUZZ" {
+		t.Fatalf("SNI-only fuzz keyword was not activated: %#v", conf.InputProviders)
+	}
+	if !RequestContainsKeyword(BaseRequest(conf), "FUZZ") {
+		t.Fatal("base request did not expose its SNI fuzz keyword")
+	}
+}
 
 func TestTemplatePresent(t *testing.T) {
 	template := "§"

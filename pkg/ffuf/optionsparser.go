@@ -45,7 +45,7 @@ type HTTPOptions struct {
 	RecursionDepth    int      `json:"recursion_depth" ffuf:"recursion-depth" section:"http" usage:"Maximum recursion depth."`
 	RecursionStrategy string   `json:"recursion_strategy" ffuf:"recursion-strategy" section:"http" usage:"Recursion strategy: \"default\" for a redirect based, and \"greedy\" to recurse on all matches"`
 	ReplayProxyURL    string   `json:"replay_proxy_url" ffuf:"replay-proxy" section:"http" usage:"Replay matched requests using this proxy."`
-	SNI               string   `json:"sni" ffuf:"sni" section:"http" usage:"Target TLS SNI, does not support FUZZ keyword"`
+	SNI               string   `json:"sni" ffuf:"sni" section:"http" usage:"Target TLS SNI; fuzz keywords are supported"`
 	Timeout           int      `json:"timeout" ffuf:"timeout" section:"http" usage:"HTTP request timeout in seconds."`
 	URL               string   `json:"url" ffuf:"u" section:"http" usage:"Target URL"`
 	Http2             bool     `json:"http2" ffuf:"http2" section:"http" usage:"Use HTTP2 protocol"`
@@ -818,6 +818,9 @@ func parseRawRequest(parseOpts *ConfigOptions, conf *Config) error {
 
 func keywordPresent(keyword string, conf *Config) bool {
 	//Search for keyword from HTTP method, URL and POST data too
+	if strings.Contains(conf.SNI, keyword) {
+		return true
+	}
 	if strings.Contains(conf.Method, keyword) {
 		return true
 	}

@@ -9,6 +9,7 @@ import (
 type Request struct {
 	Method    string
 	Host      string
+	SNI       string `json:"-"`
 	Url       string
 	Headers   map[string]string
 	Data      []byte
@@ -22,6 +23,7 @@ type Request struct {
 func NewRequest(conf *Config) Request {
 	var req Request
 	req.Method = conf.Method
+	req.SNI = conf.SNI
 	req.Url = conf.Url
 	req.Headers = make(map[string]string)
 	return req
@@ -47,6 +49,7 @@ func CopyRequest(basereq *Request) Request {
 	var req Request
 	req.Method = basereq.Method
 	req.Host = basereq.Host
+	req.SNI = basereq.SNI
 	req.Url = basereq.Url
 
 	req.Headers = make(map[string]string, len(basereq.Headers))

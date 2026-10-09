@@ -51,6 +51,9 @@ func FileExists(path string) bool {
 
 // RequestContainsKeyword checks if a keyword is present in any field of a request
 func RequestContainsKeyword(req Request, kw string) bool {
+	if strings.Contains(req.SNI, kw) {
+		return true
+	}
 	if strings.Contains(req.Host, kw) {
 		return true
 	}

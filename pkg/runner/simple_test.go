@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,9 +13,61 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ffuf/ffuf/v2/pkg/ffuf"
 )
+
+func TestDynamicSNIUsesPayloadAndFreshConnection(t *testing.T) {
+	sniNames := make(chan string, 2)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, "%s", r.Host)
+	}))
+	srv.TLS = &tls.Config{
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			sniNames <- hello.ServerName
+			return nil, nil
+		},
+	}
+	srv.StartTLS()
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conf := ffuf.NewConfig(ctx, cancel)
+	conf.Method = http.MethodGet
+	conf.Url = srv.URL
+	conf.SNI = "FUZZ.example.test"
+	conf.Headers["Host"] = "FUZZ.example.test"
+	runner := NewSimpleRunner(&conf, false)
+	base := ffuf.BaseRequest(&conf)
+
+	for _, payload := range []string{"alpha", "beta"} {
+		req, err := runner.Prepare(map[string][]byte{"FUZZ": []byte(payload)}, &base)
+		if err != nil {
+			t.Fatalf("prepare %s: %v", payload, err)
+		}
+		wantHost := payload + ".example.test"
+		if req.SNI != wantHost {
+			t.Fatalf("prepared SNI = %q, want %q", req.SNI, wantHost)
+		}
+		resp, err := runner.Execute(&req)
+		if err != nil {
+			t.Fatalf("execute %s: %v", payload, err)
+		}
+		if string(resp.Data) != wantHost {
+			t.Errorf("HTTP Host = %q, want %q", resp.Data, wantHost)
+		}
+		select {
+		case gotSNI := <-sniNames:
+			if gotSNI != wantHost {
+				t.Errorf("TLS SNI = %q, want %q", gotSNI, wantHost)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("server did not observe a TLS handshake")
+		}
+	}
+}
 
 // gzipBomb returns a gzip stream that decompresses to `decompressed` bytes of
 // zeros. The compressed form is tiny (zeros compress ~1000x), so the test moves
